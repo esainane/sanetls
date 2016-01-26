@@ -1,0 +1,41 @@
+#!/bin/bash
+if [ $# -eq 0 ]; then
+  echo "Usage: %s [OPTION]... program [PROGRAM-OPTIONS]...";
+  echo;
+  echo "  -o, --options"
+  echo "                 Force the specified OpenSSL protocol options to always be set in the application."
+  echo "  -d, --disableoptions"
+  echo "                 Force the specified OpenSSL protocol options to never be set in the application, unless present with --disableoptions, which takes precedence."
+  echo "  -p, --dhparams"
+  echo "                 Force the application to use the specified dhparams file."
+  echo "  -c, --ciphers"
+  echo "                 Force the application to use the specified OpenSSL cipher string."
+  exit 1;
+fi;
+export LD_PRELOAD="%s/%s";
+while [ $# -gt 1 ]; do
+  case "$1" in
+  -o|--options)
+  export FORCED_OPTIONS="$2";
+  shift;
+  ;;
+  -d|--disableoptions)
+  export FORCED_CLEAROPTIONS="$2";
+  shift;
+  ;;
+  -p|--dhparams)
+  export DHPARAMS_FILE="$2";
+  shift;
+  ;;
+  -c|--ciphers)
+  export FORCED_CIPHERS="$2";
+  shift;
+  ;;
+  *)
+  break;
+  ;;
+  esac
+  shift;
+done
+
+exec "$@";
