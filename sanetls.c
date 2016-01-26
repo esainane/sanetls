@@ -20,6 +20,50 @@
 #include <stdlib.h>
 #include <dlfcn.h>
 
+static void **dyssl_candidates = 0;
+static int dyssl_num = 0;
+static int dyssl_max = 0;
+
+/*
+ * FIXME: Ugly workaround for dynamically loaded OpenSSL or other wrapper libraries.
+ */
+
+/* Search for the symbol through RTLD_NEXT and any dynamically loaded library that looks like libssl */
+static void *load_symbol(const char *symbol) {
+  void *ret;
+  int i = 0;
+  ret = dlsym(RTLD_NEXT, symbol);
+  for ( ; !ret && i != dyssl_num; ++i) {
+    ret = dlsym(dyssl_candidates[i], symbol);
+  }
+  if (!ret) {
+    fprintf(stderr, "Unable to find real %s function, aborting!\n", symbol);
+    exit(1);
+  }
+  return ret;
+}
+
+void *dlopen(const char *filename, int flag) {
+  static void *(*dlopen_real)(const char *filename, int flag) = 0;
+  if (!dlopen_real)
+    dlopen_real = dlsym(RTLD_NEXT, "dlopen");
+  void *ret = dlopen_real(filename, flag);
+  if (!ret)
+    return ret; /* No point retaining a handle to something that failed */
+  const char *pos = strrchr(filename, '/');
+  /* Ugly hack incoming! Does the filename look like ssl? */
+  if (!pos)
+    pos = filename;
+  /* ...this is going to be fun. */
+  if (strstr(pos, "ssl")) {
+    if (dyssl_num == dyssl_max) {
+      dyssl_candidates = realloc(dyssl_candidates, sizeof(void *) * (dyssl_max += 5));
+    }
+    dyssl_candidates[dyssl_num++] = ret;
+  }
+  return ret;
+}
+
 /*
  * Configuration from interposed environment
  */
@@ -124,8 +168,9 @@ static DH *injected_callback(SSL *SSL, int is_export, int keylength) {
  * performs absolutely no configuration, we still set sane defaults. */
 SSL_CTX *SSL_CTX_new(const SSL_METHOD *method) {
   static SSL_CTX *(*SSL_CTX_new_real)(const SSL_METHOD *method) = 0;
-  if (!SSL_CTX_new_real)
-    SSL_CTX_new_real = dlsym(RTLD_NEXT, "SSL_CTX_new");
+  if (!SSL_CTX_new_real) {
+    SSL_CTX_new_real = load_symbol("SSL_CTX_new");
+  }
   SSL_CTX *ret = SSL_CTX_new_real(method);
   /* Dispatch to our overridden methods, which may or may not be macros */
   if (get_forced_clearoption_bits()) {
@@ -155,7 +200,7 @@ SSL_CTX *SSL_CTX_new(const SSL_METHOD *method) {
 long SSL_CTX_clear_options(SSL_CTX *ctx, long options) {
   static long (*SSL_CTX_clear_options_real)(SSL_CTX *ctx, long options) = 0;
   if (!SSL_CTX_clear_options_real)
-    SSL_CTX_clear_options_real = dlsym(RTLD_NEXT, "SSL_CTX_clear_options");
+    SSL_CTX_clear_options_real = load_symbol("SSL_CTX_clear_options");
   return SSL_CTX_clear_options_real(ctx, (options | get_forced_clearoption_bits()) & ~get_forced_option_bits());
 }
 
@@ -168,7 +213,7 @@ long SSL_CTX_clear_options(SSL_CTX *ctx, long options) {
 long SSL_clear_options(SSL *ssl, long options) {
   static long (*SSL_clear_options_real)(SSL *ssl, long options) = 0;
   if (!SSL_clear_options_real)
-    SSL_clear_options_real = dlsym(RTLD_NEXT, "SSL_clear_options");
+    SSL_clear_options_real = load_symbol("SSL_clear_options");
   return  SSL_clear_options_real(ssl, (options | get_forced_clearoption_bits()) & ~get_forced_option_bits());
 }
 
@@ -181,7 +226,7 @@ long SSL_clear_options(SSL *ssl, long options) {
 long SSL_CTX_set_options(SSL_CTX *ctx, long options) {
   static long (*SSL_CTX_set_options_real)(SSL_CTX *ctx, long options) = 0;
   if (!SSL_CTX_set_options_real)
-    SSL_CTX_set_options_real = dlsym(RTLD_NEXT, "SSL_CTX_set_options");
+    SSL_CTX_set_options_real = load_symbol("SSL_CTX_set_options");
   return SSL_CTX_set_options_real(ctx, (options & ~get_forced_clearoption_bits()) | get_forced_option_bits());
 }
 
@@ -194,7 +239,7 @@ long SSL_CTX_set_options(SSL_CTX *ctx, long options) {
 long SSL_set_options(SSL *ssl, long options) {
   static long (*SSL_set_options_real)(SSL *ssl, long options) = 0;
   if (!SSL_set_options_real)
-    SSL_set_options_real = dlsym(RTLD_NEXT, "SSL_set_options");
+    SSL_set_options_real = load_symbol("SSL_set_options");
   return SSL_set_options_real(ssl, (options & ~get_forced_clearoption_bits()) | get_forced_option_bits());
 }
 
@@ -211,7 +256,7 @@ void SSL_CTX_set_tmp_dh_callback(SSL_CTX *ctx,
   static void (*SSL_CTX_set_tmp_dh_callback_real)(SSL_CTX *ctx,
           DH *(*tmp_dh_callback)(SSL *ssl, int is_export, int keylength)) = 0;
   if (!SSL_CTX_set_tmp_dh_callback_real)
-    SSL_CTX_set_tmp_dh_callback_real = dlsym(RTLD_NEXT, "SSL_CTX_set_tmp_dh_callback");
+    SSL_CTX_set_tmp_dh_callback_real = load_symbol("SSL_CTX_set_tmp_dh_callback");
   SSL_CTX_set_tmp_dh_callback_real(ctx, injected_callback);
 }
 
@@ -224,7 +269,7 @@ void SSL_CTX_set_tmp_dh_callback(SSL_CTX *ctx,
 long SSL_CTX_set_tmp_dh(SSL_CTX *ctx, DH *dh) {
   static long (*SSL_CTX_set_tmp_dh_real)(SSL_CTX *ctx, DH *dh) = 0;
   if (!SSL_CTX_set_tmp_dh_real)
-    SSL_CTX_set_tmp_dh_real = dlsym(RTLD_NEXT, "SSL_CTX_set_tmp_dh");
+    SSL_CTX_set_tmp_dh_real = load_symbol("SSL_CTX_set_tmp_dh");
   DH *our_dh = get_DH();
   if (our_dh) dh = our_dh;
   return SSL_CTX_set_tmp_dh_real(ctx, dh);
@@ -241,7 +286,7 @@ void SSL_set_tmp_dh_callback(SSL *ctx /* sic, see https://www.openssl.org/docs/m
   static void (*SSL_set_tmp_dh_callback_real)(SSL *ctx,
           DH *(*tmp_dh_callback)(SSL *ssl, int is_export, int keylength)) = 0;
   if (!SSL_set_tmp_dh_callback_real)
-    SSL_set_tmp_dh_callback_real = dlsym(RTLD_NEXT, "SSL_set_tmp_dh_callback");
+    SSL_set_tmp_dh_callback_real = load_symbol("SSL_set_tmp_dh_callback");
   SSL_set_tmp_dh_callback_real(ctx, injected_callback);
 }
 
@@ -255,7 +300,7 @@ void SSL_set_tmp_dh_callback(SSL *ctx /* sic, see https://www.openssl.org/docs/m
 long SSL_set_tmp_dh(SSL *ssl, DH *dh) {
   static long (*SSL_set_tmp_dh_real)(SSL *ssl, DH *dh) = 0;
   if (!SSL_set_tmp_dh_real)
-    SSL_set_tmp_dh_real = dlsym(RTLD_NEXT, "SSL_set_tmp_dh");
+    SSL_set_tmp_dh_real = load_symbol("SSL_set_tmp_dh");
   DH *our_dh = get_DH();
   if (our_dh) dh = our_dh;
   return SSL_set_tmp_dh_real(ssl, dh);
@@ -272,7 +317,7 @@ long SSL_set_tmp_dh(SSL *ssl, DH *dh) {
 int SSL_CTX_set_cipher_list(SSL_CTX *ctx, const char *str) {
   static int (*SSL_CTX_set_cipher_list_real)(SSL_CTX *ctx, const char *str) = 0;
   if (!SSL_CTX_set_cipher_list_real)
-    SSL_CTX_set_cipher_list_real = dlsym(RTLD_NEXT, "SSL_CTX_set_cipher_list");
+    SSL_CTX_set_cipher_list_real = load_symbol("SSL_CTX_set_cipher_list");
   return SSL_CTX_set_cipher_list_real(ctx, get_forced_ciphers() ? get_forced_ciphers() : str);
 }
 
@@ -285,7 +330,7 @@ int SSL_CTX_set_cipher_list(SSL_CTX *ctx, const char *str) {
 int SSL_set_cipher_list(SSL *ssl, const char *str) {
   static int (*SSL_set_cipher_list_real)(SSL *ssl, const char *str) = 0;
   if (!SSL_set_cipher_list_real)
-    SSL_set_cipher_list_real = dlsym(RTLD_NEXT, "SSL_set_cipher_list");
+    SSL_set_cipher_list_real = load_symbol("SSL_set_cipher_list");
   return SSL_set_cipher_list_real(ssl, get_forced_ciphers() ? get_forced_ciphers() : str);
 }
 
@@ -304,7 +349,7 @@ int SSL_set_cipher_list(SSL *ssl, const char *str) {
 long SSL_CTX_ctrl(SSL_CTX *ctx, int cmd, long larg, void *parg) {
   static long (*SSL_CTX_ctrl_real)(SSL_CTX *ctx, int cmd, long larg, void *parg) = 0;
   if (!SSL_CTX_ctrl_real)
-    SSL_CTX_ctrl_real = dlsym(RTLD_NEXT, "SSL_CTX_ctrl");
+    SSL_CTX_ctrl_real = load_symbol("SSL_CTX_ctrl");
   switch(cmd) {
     /* Only tweak parameters for the functions we are concerned with. */
   case SSL_CTRL_CLEAR_OPTIONS:
@@ -333,7 +378,7 @@ long SSL_CTX_ctrl(SSL_CTX *ctx, int cmd, long larg, void *parg) {
 long SSL_ctrl(SSL *ssl, int cmd, long larg, void *parg) {
   static long (*SSL_ctrl_real)(SSL *ssl, int cmd, long larg, void *parg) = 0;
   if (!SSL_ctrl_real)
-    SSL_ctrl_real = dlsym(RTLD_NEXT, "SSL_ctrl");
+    SSL_ctrl_real = load_symbol("SSL_ctrl");
   switch(cmd) {
     /* Only tweak parameters for the functions we are concerned with. */
   case SSL_CTRL_CLEAR_OPTIONS:
