@@ -12,7 +12,8 @@ Installation
 ---
 ```
 make
-sudo make install / checkinstall```
+sudo make install / checkinstall
+```
 
 Usage
 ---
@@ -29,7 +30,7 @@ sanetls [OPTION]... program [PROGRAM-OPTIONS]...
                  Force the application to use the specified OpenSSL cipher string.
 ```
 
-For example, ```sanetls quasselcore``` will run ```quasselcore``` with SSLv3 disabled.
+For example, `sanetls quasselcore` will run `quasselcore` with SSLv3 disabled.
 
 
 Caveats
