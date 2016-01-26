@@ -48,5 +48,5 @@ This interposer is designed to override configuration options. If a service prov
 
 TODO
 ---
-Enforce SSL renegotiation limits for long running connections?
-Warn if specific requests for deprecated or insecure mechanisms are used?
+ - Enforce SSL renegotiation limits for long running connections?
+ - Warn if specific requests for deprecated or insecure mechanisms are used?
