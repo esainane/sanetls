@@ -23,7 +23,7 @@ sanetls [OPTION]... program [PROGRAM-OPTIONS]...
   -o, --options
                  Force the specified OpenSSL protocol options to always be set in the application.
   -d, --disableoptions
-                 Force the specified OpenSSL protocol options to never be set in the application, unless present with --disableoptions, which takes precedence.
+                 Force the specified OpenSSL protocol options to never be set in the application, unless present with --options, which takes precedence.
   -p, --dhparams
                  Force the application to use the specified dhparams file.
   -c, --ciphers

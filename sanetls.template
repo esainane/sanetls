@@ -5,7 +5,7 @@ if [ $# -eq 0 ]; then
   echo "  -o, --options"
   echo "                 Force the specified OpenSSL protocol options to always be set in the application."
   echo "  -d, --disableoptions"
-  echo "                 Force the specified OpenSSL protocol options to never be set in the application, unless present with --disableoptions, which takes precedence."
+  echo "                 Force the specified OpenSSL protocol options to never be set in the application, unless present with --options, which takes precedence."
   echo "  -p, --dhparams"
   echo "                 Force the application to use the specified dhparams file."
   echo "  -c, --ciphers"
